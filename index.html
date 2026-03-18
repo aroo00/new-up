@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="unnamed.png">
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>7-Eleven Rack Inspection</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<!-- Firebase SDK -->
+<script type="module">
+import { initializeApp }                          from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+// ════════════════════════════════════════════════════════════════
+//  🔥 PASTE YOUR FIREBASE CONFIG HERE  (one-time setup)
+//
+//  1. Go to https://console.firebase.google.com
+//  2. Add project → name it → Create
+//  3. Left menu → Build → Realtime Database → Create Database
+//     → choose any location → Start in TEST MODE → Enable
+//  4. Gear icon ⚙ → Project Settings → Your apps → </> (Web)
+//     → Register app → copy the firebaseConfig values below
+// ════════════════════════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey:            "AIzaSyCCNv7bsnGlbg0mcp5gL7DiaYzWeCGPKkU",
+  authDomain:        "eleven-rack.firebaseapp.com",
+  databaseURL:       "https://eleven-rack-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "eleven-rack",
+  storageBucket:     "eleven-rack.firebasestorage.app",
+  messagingSenderId: "826642132687",
+  appId:             "1:826642132687:web:1ec7b678553702bc8091ba"
+};
+
+try {
+  const app  = initializeApp(firebaseConfig);
+  const db   = getDatabase(app);
+  const root = ref(db, '7eleven/rack_state');
+
+  window._fbSet    = (code, val) => set(ref(db, `7eleven/rack_state/${code}`), val);
+  window._fbRemove = (code)      => remove(ref(db, `7eleven/rack_state/${code}`));
+  window._fbListen = (cb)        => onValue(root, snap => cb(snap.val() || {}));
+  window._fbReady  = true;
+  window.dispatchEvent(new Event('firebase-ready'));
+} catch(e) {
+  window.dispatchEvent(new Event('firebase-error'));
+}
+</script>
+
+<style>
+  :root {
+    --bg:#0d0f0e; --surface:#161918; --surface2:#1e2221; --border:#2a2f2d;
+    --green:#3dffa0; --green-dim:#1a5c3f; --red:#ff4d6d; --red-dim:#5c1a27;
+    --amber:#ffb830; --text:#e8ede9; --muted:#6b7570;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;}
+
+  /* ── SETUP SCREEN ── */
+  #setup-screen{display:none;min-height:100vh;align-items:center;justify-content:center;padding:24px 16px;}
+  #setup-screen.show{display:flex;}
+  .setup-box{background:var(--surface);border:1px solid var(--amber);border-radius:18px;padding:32px 28px;max-width:600px;width:100%;}
+  .setup-box h2{color:var(--amber);font-size:1.1rem;margin-bottom:10px;}
+  .setup-box>p{color:var(--muted);font-size:0.8rem;line-height:1.7;margin-bottom:20px;}
+  .steps{display:flex;flex-direction:column;gap:10px;}
+  .step{display:flex;gap:12px;background:var(--surface2);border-radius:10px;padding:12px 14px;font-size:0.78rem;color:var(--text);line-height:1.65;align-items:flex-start;}
+  .step-n{min-width:22px;height:22px;border-radius:50%;background:var(--amber);color:#0d0f0e;font-weight:800;font-size:0.7rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;}
+  .step a{color:var(--green);}
+  .step code{background:var(--bg);padding:1px 6px;border-radius:4px;font-family:'DM Mono',monospace;font-size:0.72rem;color:var(--green);}
+
+  /* ── LOADING ── */
+  #loading-screen{display:none;min-height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:16px;}
+  #loading-screen.show{display:flex;}
+  .spinner{width:38px;height:38px;border:3px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin 0.8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-txt{font-size:0.8rem;color:var(--muted);font-family:'DM Mono',monospace;}
+
+  /* ── LOGIN PAGE ── */
+  #login-page{display:none;min-height:100vh;align-items:center;justify-content:center;padding:24px 16px;position:relative;overflow:hidden;}
+  #login-page.show{display:flex;}
+  #login-page::before{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(61,255,160,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(61,255,160,0.04) 1px,transparent 1px);background-size:52px 52px;animation:gridDrift 28s linear infinite;}
+  @keyframes gridDrift{from{background-position:0 0}to{background-position:52px 52px}}
+  #login-page::after{content:'';position:absolute;width:600px;height:600px;background:radial-gradient(circle,rgba(61,255,160,0.07) 0%,transparent 65%);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;}
+  .login-wrap{width:100%;max-width:400px;position:relative;z-index:1;animation:riseIn 0.5s cubic-bezier(0.22,1,0.36,1);}
+  @keyframes riseIn{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:translateY(0)}}
+  .login-brand{display:flex;align-items:center;gap:14px;justify-content:center;margin-bottom:28px;}
+  .login-brand-icon{width:52px;height:52px;background:var(--green);border-radius:14px;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 0 32px rgba(61,255,160,0.28);}
+  .login-brand-icon img{width:100%;height:100%;object-fit:cover;}
+  .login-brand h1{font-size:1.6rem;font-weight:800;letter-spacing:-0.03em;}
+  .login-brand p{font-size:0.61rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.12em;margin-top:3px;}
+  .login-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:32px 28px;box-shadow:0 40px 100px rgba(0,0,0,0.55);}
+  .restricted-badge{display:flex;align-items:center;gap:10px;background:rgba(61,255,160,0.07);border:1px solid rgba(61,255,160,0.18);border-radius:10px;padding:10px 14px;margin-bottom:22px;}
+  .restricted-badge .bi{font-size:1.1rem;}
+  .restricted-badge strong{display:block;font-size:0.8rem;font-weight:700;color:var(--green);}
+  .restricted-badge span{font-size:0.67rem;color:var(--muted);}
+  .login-err{background:var(--red-dim);border:1px solid rgba(255,77,109,0.3);color:var(--red);border-radius:10px;padding:11px 14px;font-size:0.77rem;font-weight:600;margin-bottom:14px;display:none;align-items:center;gap:8px;}
+  .login-err.show{display:flex;animation:fadeIn 0.2s;}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:0.67rem;font-weight:700;text-transform:uppercase;letter-spacing:0.09em;color:var(--muted);margin-bottom:6px;}
+  .finput-wrap{position:relative;}
+  .finput-wrap input{width:100%;padding:13px 44px 13px 15px;background:var(--surface2);border:1.5px solid var(--border);border-radius:11px;color:var(--text);font-family:'Syne',sans-serif;font-size:0.95rem;outline:none;transition:border-color 0.18s,box-shadow 0.18s;}
+  .finput-wrap input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(61,255,160,0.1);}
+  .finput-wrap input.err{animation:shake 0.32s ease;}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}60%{transform:translateX(7px)}}
+  .eye-btn{position:absolute;right:13px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:0.95rem;padding:4px;transition:color 0.18s;line-height:1;}
+  .eye-btn:hover{color:var(--text);}
+  .btn-login{width:100%;padding:14px;background:var(--green);color:#0d0f0e;border:none;border-radius:11px;font-family:'Syne',sans-serif;font-weight:800;font-size:0.95rem;cursor:pointer;letter-spacing:0.02em;transition:all 0.18s;margin-top:4px;display:flex;align-items:center;justify-content:center;gap:8px;}
+  .btn-login:hover{background:#5fffb4;transform:translateY(-1px);box-shadow:0 8px 24px rgba(61,255,160,0.22);}
+  .btn-login:active{transform:scale(0.97);}
+
+  /* view-only link on login */
+  .view-link{margin-top:16px;text-align:center;font-size:0.74rem;color:var(--muted);}
+  .view-link button{background:none;border:none;color:var(--green);font-family:'Syne',sans-serif;font-size:0.74rem;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px;}
+  .view-link button:hover{color:#5fffb4;}
+
+  /* ── APP PAGE ── */
+  #app-page{display:none;}
+  #app-page.show{display:block;}
+
+  /* VIEW-ONLY BANNER */
+  .view-banner{
+    background:rgba(255,184,48,0.08);border-bottom:1px solid rgba(255,184,48,0.25);
+    padding:10px 36px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  }
+  .view-banner-left{display:flex;align-items:center;gap:10px;font-size:0.78rem;color:var(--amber);font-weight:600;}
+  .view-banner-left span{font-size:1rem;}
+  .view-banner-right{font-size:0.7rem;color:var(--muted);}
+  .view-banner button{background:none;border:1px solid var(--border);border-radius:6px;padding:5px 12px;color:var(--muted);font-family:'Syne',sans-serif;font-size:0.7rem;font-weight:600;cursor:pointer;transition:all 0.18s;}
+  .view-banner button:hover{border-color:var(--green);color:var(--green);}
+
+  /* SYNC PILL */
+  .sync-pill{display:flex;align-items:center;gap:6px;font-size:0.68rem;font-family:'DM Mono',monospace;color:var(--muted);}
+  .sync-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s ease-in-out infinite;}
+  .sync-dot.off{background:var(--red);animation:none;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.25}}
+
+  /* HEADER */
+  header{display:flex;align-items:center;justify-content:space-between;padding:20px 36px;border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(13,15,14,0.92);backdrop-filter:blur(12px);z-index:100;}
+  .logo{display:flex;align-items:center;gap:12px;}
+  .logo-icon{width:38px;height:38px;background:var(--green);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+  .logo h1{font-size:1.3rem;font-weight:800;letter-spacing:-0.02em;}
+  .logo span{font-size:0.7rem;color:var(--muted);font-weight:400;display:block;letter-spacing:0.08em;text-transform:uppercase;}
+  .header-actions{display:flex;gap:10px;align-items:center;}
+  .btn-logout{padding:9px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:'Syne',sans-serif;font-weight:600;font-size:0.82rem;transition:all 0.18s;}
+  .btn-logout:hover{border-color:var(--red);color:var(--red);}
+  .btn{padding:9px 20px;border-radius:8px;border:none;cursor:pointer;font-family:'Syne',sans-serif;font-weight:600;font-size:0.82rem;letter-spacing:0.02em;transition:all 0.18s;}
+  .btn-primary{background:var(--green);color:#0d0f0e;}
+  .btn-primary:hover{background:#5fffb4;transform:translateY(-1px);}
+  .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border);}
+  .btn-ghost:hover{border-color:var(--green);color:var(--green);}
+
+  /* SUMMARY */
+  .summary-bar{display:flex;gap:24px;align-items:center;padding:16px 36px;border-bottom:1px solid var(--border);background:var(--surface);}
+  .stat{display:flex;flex-direction:column;gap:2px;}
+  .stat-val{font-size:1.5rem;font-weight:800;font-family:'DM Mono',monospace;}
+  .stat-lbl{font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;}
+  .stat-val.green{color:var(--green);}.stat-val.red{color:var(--red);}.stat-val.amber{color:var(--amber);}
+  .stat-divider{width:1px;height:36px;background:var(--border);}
+  .progress-wrap{flex:1;}
+  .progress-track{height:6px;background:var(--border);border-radius:99px;overflow:hidden;}
+  .progress-fill{height:100%;background:linear-gradient(90deg,var(--green-dim),var(--green));border-radius:99px;transition:width 0.4s ease;}
+  .progress-label{font-size:0.7rem;color:var(--muted);margin-top:5px;font-family:'DM Mono',monospace;}
+
+  /* MAIN */
+  main{padding:28px 36px;display:flex;flex-direction:column;gap:28px;}
+  .rack-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;transition:border-color 0.2s;}
+  .rack-card.all-done{border-color:var(--green-dim);}
+  .rack-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--border);background:var(--surface2);}
+  .rack-title{display:flex;align-items:center;gap:12px;}
+  .rack-badge{width:36px;height:36px;border-radius:8px;background:var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;font-family:'DM Mono',monospace;border:1px solid var(--border);}
+  .rack-badge.done{background:var(--green-dim);color:var(--green);border-color:var(--green-dim);}
+  .rack-name{font-weight:700;font-size:1rem;}
+  .rack-code{font-size:0.72rem;color:var(--muted);font-family:'DM Mono',monospace;margin-top:2px;}
+  .rack-progress{font-size:0.78rem;color:var(--muted);font-family:'DM Mono',monospace;}
+  .rack-progress span{color:var(--text);font-weight:600;}
+  .sections-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;padding:16px 22px;}
+
+  /* section cell */
+  .section-cell{border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);padding:12px 8px;text-align:center;transition:all 0.18s;position:relative;overflow:hidden;}
+  /* clickable only for admin */
+  .section-cell.clickable{cursor:pointer;}
+  .section-cell.clickable:hover{border-color:var(--green);transform:translateY(-2px);box-shadow:0 6px 20px rgba(61,255,160,0.08);}
+  /* view-only cursor */
+  .section-cell.readonly{cursor:default;}
+  .section-cell.checked{background:var(--green-dim);border-color:var(--green);}
+  .section-cell.checked::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(61,255,160,0.18),transparent 70%);}
+  .sec-code{font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:var(--muted);}
+  .section-cell.checked .sec-code{color:var(--green);}
+  .sec-status{font-size:1.4rem;margin:6px 0 4px;line-height:1;}
+  .sec-label{font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);}
+  .section-cell.checked .sec-label{color:var(--green);}
+  .sec-time{font-size:0.58rem;color:var(--muted);font-family:'DM Mono',monospace;margin-top:4px;min-height:10px;}
+  .section-cell.checked .sec-time{color:rgba(61,255,160,0.6);}
+
+  /* MODAL */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:200;backdrop-filter:blur(4px);align-items:center;justify-content:center;}
+  .modal-overlay.active{display:flex;}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:30px;width:380px;max-width:94vw;animation:modalIn 0.2s ease;}
+  @keyframes modalIn{from{transform:scale(0.92);opacity:0}to{transform:scale(1);opacity:1}}
+  .modal h2{font-size:1.1rem;font-weight:700;margin-bottom:6px;}
+  .modal p{font-size:0.82rem;color:var(--muted);margin-bottom:20px;}
+  .modal label{font-size:0.78rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);display:block;margin-bottom:6px;}
+  .modal input{width:100%;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Syne',sans-serif;font-size:0.9rem;margin-bottom:16px;outline:none;transition:border-color 0.18s;}
+  .modal input:focus{border-color:var(--green);}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:4px;}
+
+  /* TOAST */
+  .toast{position:fixed;bottom:28px;right:28px;background:var(--surface);border:1px solid var(--green);border-radius:10px;padding:12px 20px;font-size:0.82rem;font-weight:600;color:var(--green);z-index:999;animation:toastIn 0.3s ease;display:none;}
+  @keyframes toastIn{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+  /* last-updated ticker (view mode) */
+  .last-updated{font-size:0.66rem;color:var(--muted);font-family:'DM Mono',monospace;}
+
+  @media(max-width:768px){
+    header{padding:14px 16px;}
+    .summary-bar{padding:12px 16px;gap:14px;}
+    main{padding:16px;}
+    .sections-grid{grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 14px;}
+    .rack-header{padding:12px 14px;}
+    .stat-val{font-size:1.2rem;}
+    .view-banner{padding:10px 16px;}
+  }
+  @media(max-width:480px){.sections-grid{grid-template-columns:repeat(3,1fr);}}
+</style>
+</head>
+<body>
+
+<!-- SETUP SCREEN -->
+<div id="setup-screen">
+  <div class="setup-box">
+    <h2>⚠ One-time Firebase Setup Needed</h2>
+    <p>To share live data across all devices, connect a free Firebase database. Do this once — takes about 5 minutes:</p>
+    <div class="steps">
+      <div class="step"><div class="step-n">1</div><div>Go to <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → sign in with your Google account.</div></div>
+      <div class="step"><div class="step-n">2</div><div><strong>Add project</strong> → name it (e.g. <code>7eleven-rack</code>) → Continue → Create project.</div></div>
+      <div class="step"><div class="step-n">3</div><div>Left menu → <strong>Build → Realtime Database</strong> → Create Database → any location → <strong>Start in test mode</strong> → Enable.</div></div>
+      <div class="step"><div class="step-n">4</div><div>⚙ Gear icon (top-left) → <strong>Project Settings</strong> → scroll to <em>Your apps</em> → <strong>&lt;/&gt;</strong> (Web) → Register → copy the <code>firebaseConfig</code>.</div></div>
+      <div class="step"><div class="step-n">5</div><div>Open this HTML file in Notepad/text editor → find <strong>🔥 PASTE YOUR FIREBASE CONFIG HERE</strong> → replace each <code>PASTE_..._HERE</code> with your values → save.</div></div>
+      <div class="step"><div class="step-n">6</div><div>Reopen the file. Admin logs in to check sections. Share the same link — viewers see everything live with no login! ✅</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div id="loading-screen">
+  <div class="spinner"></div>
+  <div class="loading-txt">Connecting to live database…</div>
+</div>
+
+<!-- LOGIN PAGE -->
+<div id="login-page">
+  <div class="login-wrap">
+    <div class="login-brand">
+      <div class="login-brand-icon"><img src="unnamed.png" alt="7-Eleven Logo"></div>
+      <div><h1>7-Eleven</h1><p>Rack Inspection System</p></div>
+    </div>
+    <div class="login-card">
+      <div class="restricted-badge">
+        <div class="bi">🔒</div>
+        <div>
+          <strong>Admin Sign In</strong>
+          <span>Sign in to check and manage sections. Viewers can use the link without logging in.</span>
+        </div>
+      </div>
+      <div class="login-err" id="login-err">⚠ &nbsp;Incorrect username or password</div>
+      <div class="field">
+        <label>Username</label>
+        <div class="finput-wrap">
+          <input type="text" id="li-user" placeholder="Enter username" autocomplete="username" autocorrect="off" autocapitalize="none" spellcheck="false"/>
+        </div>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <div class="finput-wrap">
+          <input type="password" id="li-pass" placeholder="Enter password" autocomplete="current-password"/>
+          <button class="eye-btn" id="eye-btn" type="button" onclick="toggleEye()" tabindex="-1">👁</button>
+        </div>
+      </div>
+      <button class="btn-login" onclick="doLogin()"><span>Sign In as Admin</span><span>→</span></button>
+      <div class="view-link">
+        Not the admin? <button onclick="enterViewMode()">View live status instead →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- APP PAGE (shared by admin + view mode) -->
+<div id="app-page">
+
+  <!-- VIEW-ONLY BANNER (shown to non-admins) -->
+  <div class="view-banner" id="view-banner" style="display:none;">
+    <div class="view-banner-left">
+      <span>👁</span> You are in <strong>View Only</strong> mode — sections update live automatically
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="last-updated" id="last-updated"></span>
+      <button onclick="showLogin()">Admin Login →</button>
+    </div>
+  </div>
+
+  <!-- MODAL (admin only) -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <h2 id="modal-title">Mark Section</h2>
+      <p id="modal-sub">Enter your name to confirm this check.</p>
+      <label for="checker-name">Your Name</label>
+      <input type="text" id="checker-name" placeholder="e.g. Kasun Perera" autocomplete="off"/>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmCheck()">Confirm Check ✓</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">
+        <img src="unnamed.png" alt="7 Eleven Logo" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">
+      </div>
+      <div><h1>7 Eleven</h1><span>Rack Inspection System</span></div>
+    </div>
+    <div class="header-actions">
+      <div class="sync-pill"><span class="sync-dot" id="sync-dot"></span><span id="sync-txt">Live</span></div>
+      <!-- admin-only buttons -->
+      <button class="btn-logout" id="btn-logout" onclick="doLogout()" style="display:none;">🚪 Sign Out</button>
+      <button class="btn btn-ghost" id="btn-reset" onclick="confirmReset()" style="display:none;">↺ Reset All</button>
+      <button class="btn btn-primary" onclick="exportPDF()">⬇ Export PDF</button>
+    </div>
+  </header>
+
+  <div class="summary-bar">
+    <div class="stat"><div class="stat-val green" id="stat-checked">0</div><div class="stat-lbl">Checked</div></div>
+    <div class="stat-divider"></div>
+    <div class="stat"><div class="stat-val red" id="stat-remaining">28</div><div class="stat-lbl">Remaining</div></div>
+    <div class="stat-divider"></div>
+    <div class="stat"><div class="stat-val amber" id="stat-racks-done">0/4</div><div class="stat-lbl">Racks Done</div></div>
+    <div class="stat-divider"></div>
+    <div class="progress-wrap">
+      <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+      <div class="progress-label" id="progress-label">0 / 28 sections complete</div>
+    </div>
+  </div>
+
+  <main id="main-content"></main>
+
+</div><!-- /#app-page -->
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════
+//  ADMIN CREDENTIALS — change these
+// ══════════════════════════════════════════
+const ADMIN_USERNAME = 'admin';
+const ADMIN_PASSWORD = '7Eleven@2025';
+
+const RACKS = [
+  { id:'A', name:'Rack A', code:'RK-A01' },
+  { id:'B', name:'Rack B', code:'RK-B01' },
+  { id:'C', name:'Rack C', code:'RK-C01' },
+  { id:'D', name:'Rack D', code:'RK-D01' },
+];
+const SECTIONS_PER_RACK = 7;
+function sectionCode(rackId, idx){ return `${rackId}-S${String(idx+1).padStart(2,'0')}`; }
+
+let state       = {};
+let pendingCell = null;
+// 'admin' | 'viewer' | null
+let currentMode = null;
+
+// ── FIREBASE ──
+window.addEventListener('firebase-ready', () => {
+  document.getElementById('loading-screen').classList.remove('show');
+
+  // Real-time listener — fires for EVERYONE (admin + viewers) whenever data changes
+  window._fbListen(newState => {
+    state = newState || {};
+    setSyncOnline(true);
+    updateLastUpdated();
+    if (currentMode) renderAll();
+  });
+
+  // Decide what to show on load
+  const savedMode = sessionStorage.getItem('711_mode');
+  if (savedMode === 'admin') {
+    enterAdminMode(false);
+  } else {
+    // Everyone else goes straight to VIEW MODE — no login needed
+    enterViewMode();
+  }
+});
+
+window.addEventListener('firebase-error', () => {
+  document.getElementById('loading-screen').classList.remove('show');
+  document.getElementById('setup-screen').classList.add('show');
+});
+
+// Show loading while Firebase module initialises
+document.getElementById('loading-screen').classList.add('show');
+setTimeout(() => {
+  if (!window._fbReady && document.getElementById('loading-screen').classList.contains('show')) {
+    document.getElementById('loading-screen').classList.remove('show');
+    document.getElementById('setup-screen').classList.add('show');
+  }
+}, 4000);
+
+// ── MODES ──
+function enterViewMode() {
+  currentMode = 'viewer';
+  sessionStorage.removeItem('711_mode');
+  document.getElementById('login-page').classList.remove('show');
+  document.getElementById('app-page').classList.add('show');
+  // show view banner, hide admin controls
+  document.getElementById('view-banner').style.display  = 'flex';
+  document.getElementById('btn-logout').style.display   = 'none';
+  document.getElementById('btn-reset').style.display    = 'none';
+  renderAll();
+}
+
+function enterAdminMode(doRender = true) {
+  currentMode = 'admin';
+  sessionStorage.setItem('711_mode', 'admin');
+  document.getElementById('login-page').classList.remove('show');
+  document.getElementById('app-page').classList.add('show');
+  // hide view banner, show admin controls
+  document.getElementById('view-banner').style.display  = 'none';
+  document.getElementById('btn-logout').style.display   = 'inline-block';
+  document.getElementById('btn-reset').style.display    = 'inline-block';
+  if (doRender) renderAll();
+}
+
+function showLogin() {
+  document.getElementById('app-page').classList.remove('show');
+  document.getElementById('login-page').classList.add('show');
+}
+
+// ── AUTH ──
+function doLogin() {
+  const un     = document.getElementById('li-user').value.trim().toLowerCase();
+  const pw     = document.getElementById('li-pass').value;
+  const err    = document.getElementById('login-err');
+  const passEl = document.getElementById('li-pass');
+
+  if (un !== ADMIN_USERNAME || pw !== ADMIN_PASSWORD) {
+    err.classList.add('show');
+    passEl.classList.add('err');
+    passEl.value = '';
+    setTimeout(() => { err.classList.remove('show'); passEl.classList.remove('err'); }, 3000);
+    return;
+  }
+  enterAdminMode();
+}
+
+function doLogout() {
+  sessionStorage.removeItem('711_mode');
+  document.getElementById('li-user').value = '';
+  document.getElementById('li-pass').value = '';
+  document.getElementById('li-pass').type  = 'password';
+  document.getElementById('eye-btn').textContent = '👁';
+  // Go back to view mode (not login screen) — they're still a viewer
+  enterViewMode();
+}
+
+function toggleEye() {
+  const p = document.getElementById('li-pass'), v = p.type === 'text';
+  p.type = v ? 'password' : 'text';
+  document.getElementById('eye-btn').textContent = v ? '👁' : '🙈';
+}
+
+document.getElementById('li-user').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('li-pass').focus(); });
+document.getElementById('li-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+// ── SYNC STATUS ──
+function setSyncOnline(on) {
+  const d = document.getElementById('sync-dot'), t = document.getElementById('sync-txt');
+  if (!d) return;
+  d.className = 'sync-dot' + (on ? '' : ' off');
+  t.textContent = on ? 'Live' : 'Offline';
+}
+
+function updateLastUpdated() {
+  const el = document.getElementById('last-updated');
+  if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+// ── RENDER ──
+function renderAll() {
+  const main = document.getElementById('main-content');
+  main.innerHTML = '';
+  RACKS.forEach(rack => {
+    const card = document.createElement('div');
+    const checkedInRack = Array.from({length:SECTIONS_PER_RACK},(_,i)=>sectionCode(rack.id,i)).filter(c=>state[c]?.checked).length;
+    const allDone = checkedInRack === SECTIONS_PER_RACK;
+    card.className = 'rack-card' + (allDone ? ' all-done' : '');
+    card.id = `rack-${rack.id}`;
+
+    const badge = `<div class="rack-badge${allDone?' done':''}">${rack.id}</div>`;
+    const header = `<div class="rack-header">
+      <div class="rack-title">${badge}
+        <div><div class="rack-name">${rack.name}</div><div class="rack-code">${rack.code}</div></div>
+      </div>
+      <div class="rack-progress"><span>${checkedInRack}</span> / ${SECTIONS_PER_RACK} sections</div>
+    </div>`;
+
+    const isAdmin = currentMode === 'admin';
+    let grid = '<div class="sections-grid">';
+    for (let i = 0; i < SECTIONS_PER_RACK; i++) {
+      const code    = sectionCode(rack.id, i);
+      const info    = state[code];
+      const checked = info?.checked;
+      // Admin: clickable. Viewer: readonly (no click, no hover effect)
+      const cellClass = `section-cell${checked?' checked':''}${isAdmin?' clickable':' readonly'}`;
+      const onclick   = isAdmin ? `onclick="openModal('${rack.id}',${i},'${code}')"` : '';
+      const title     = isAdmin
+        ? (checked ? `Checked by ${info.by}` : 'Click to mark as checked')
+        : (checked ? `Checked by ${info.by}` : 'Pending');
+      grid += `<div class="${cellClass}" ${onclick} title="${title}">
+        <div class="sec-code">${code}</div>
+        <div class="sec-status">${checked ? '✅' : '🔴'}</div>
+        <div class="sec-label">${checked ? 'Done' : 'Pending'}</div>
+        <div class="sec-time">${checked ? info.time : ''}</div>
+      </div>`;
+    }
+    grid += '</div>';
+    card.innerHTML = header + grid;
+    main.appendChild(card);
+  });
+  updateSummary();
+}
+
+function updateSummary() {
+  const total      = RACKS.length * SECTIONS_PER_RACK;
+  const checked    = Object.values(state).filter(v=>v.checked).length;
+  const remaining  = total - checked;
+  const racksDone  = RACKS.filter(r =>
+    Array.from({length:SECTIONS_PER_RACK},(_,i)=>sectionCode(r.id,i)).every(c=>state[c]?.checked)
+  ).length;
+  document.getElementById('stat-checked').textContent    = checked;
+  document.getElementById('stat-remaining').textContent  = remaining;
+  document.getElementById('stat-racks-done').textContent = `${racksDone}/4`;
+  document.getElementById('progress-fill').style.width   = `${(checked/total)*100}%`;
+  document.getElementById('progress-label').textContent  = `${checked} / ${total} sections complete`;
+}
+
+// ── MODAL (admin only) ──
+function openModal(rackId, secIdx, code) {
+  if (currentMode !== 'admin') return;
+  if (state[code]?.checked) {
+    if (confirm(`Un-check section ${code}?\nWas checked by: ${state[code].by}`)) {
+      window._fbRemove(code);
+      showToast(`Section ${code} unchecked`);
+    }
+    return;
+  }
+  pendingCell = { rackId, secIdx, code };
+  document.getElementById('modal-title').textContent = `Check Section ${code}`;
+  document.getElementById('modal-sub').textContent   = `Rack: ${RACKS.find(r=>r.id===rackId).name} · Section ${secIdx+1} of ${SECTIONS_PER_RACK}`;
+  document.getElementById('checker-name').value = localStorage.getItem('last_checker') || '';
+  document.getElementById('modal').classList.add('active');
+  setTimeout(() => document.getElementById('checker-name').focus(), 100);
+}
+function closeModal() { document.getElementById('modal').classList.remove('active'); pendingCell = null; }
+function confirmCheck() {
+  const name = document.getElementById('checker-name').value.trim();
+  if (!name) { alert('Please enter your name.'); return; }
+  const now  = new Date();
+  const time = now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  const date = now.toLocaleDateString('en-GB');
+  // Write to Firebase → all viewers update within ~1 second automatically
+  window._fbSet(pendingCell.code, { checked:true, by:name, time:`${date} ${time}` });
+  localStorage.setItem('last_checker', name);
+  closeModal();
+  showToast(`✅ ${pendingCell.code} marked by ${name}`);
+}
+document.getElementById('checker-name').addEventListener('keydown', e => { if(e.key==='Enter') confirmCheck(); });
+document.getElementById('modal').addEventListener('click', e => { if(e.target===document.getElementById('modal')) closeModal(); });
+
+// ── RESET (admin only) ──
+function confirmReset() {
+  if (currentMode !== 'admin') return;
+  if (confirm('Reset ALL sections? This clears data for ALL users. Cannot be undone.')) {
+    RACKS.forEach(r => {
+      for (let i = 0; i < SECTIONS_PER_RACK; i++) window._fbRemove(sectionCode(r.id, i));
+    });
+    showToast('All sections reset');
+  }
+}
+
+// ── TOAST ──
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => { t.style.display='none'; }, 2800);
+}
+
+// ── PDF EXPORT ──
+function exportPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-GB') + ' ' + now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  const total        = RACKS.length * SECTIONS_PER_RACK;
+  const checkedCount = Object.values(state).filter(v=>v.checked).length;
+  const remaining    = total - checkedCount;
+  const W=210, H=297;
+
+  doc.setFillColor(13,15,14);doc.rect(0,0,W,H,'F');
+  doc.setFillColor(22,25,24);doc.rect(0,0,W,28,'F');
+  doc.setFillColor(61,255,160);doc.rect(0,0,6,28,'F');
+  doc.setTextColor(232,237,233);doc.setFontSize(16);doc.setFont('helvetica','bold');
+  doc.text('7 Eleven — Rack Inspection Report',14,12);
+  doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(107,117,112);
+  doc.text(`Generated: ${dateStr}`,14,20);
+
+  const boxY=36,boxH=20,boxW=44;
+  const boxes=[
+    {label:'Total Sections',val:String(total),color:[45,85,65]},
+    {label:'Checked',val:String(checkedCount),color:[30,92,63]},
+    {label:'Remaining',val:String(remaining),color:[92,26,39]},
+    {label:'Racks Complete',val:RACKS.filter(r=>Array.from({length:SECTIONS_PER_RACK},(_,i)=>sectionCode(r.id,i)).every(c=>state[c]?.checked)).length+'/4',color:[60,50,20]},
+  ];
+  boxes.forEach((b,i)=>{
+    const x=14+i*(boxW+4);
+    doc.setFillColor(...b.color);doc.roundedRect(x,boxY,boxW,boxH,3,3,'F');
+    doc.setTextColor(232,237,233);doc.setFontSize(14);doc.setFont('helvetica','bold');
+    doc.text(b.val,x+boxW/2,boxY+11,{align:'center'});
+    doc.setFontSize(7);doc.setFont('helvetica','normal');doc.setTextColor(180,190,185);
+    doc.text(b.label,x+boxW/2,boxY+17,{align:'center'});
+  });
+
+  let curY=68;
+  RACKS.forEach(rack=>{
+    if(curY>250){doc.addPage();doc.setFillColor(13,15,14);doc.rect(0,0,W,H,'F');curY=16;}
+    const secs=Array.from({length:SECTIONS_PER_RACK},(_,i)=>({code:sectionCode(rack.id,i),info:state[sectionCode(rack.id,i)]}));
+    const rChecked=secs.filter(s=>s.info?.checked).length,allDone=rChecked===SECTIONS_PER_RACK;
+    doc.setFillColor(30,34,33);doc.roundedRect(14,curY,W-28,12,2,2,'F');
+    if(allDone){doc.setFillColor(61,255,160);doc.roundedRect(14,curY,4,12,1,1,'F');}
+    doc.setTextColor(232,237,233);doc.setFontSize(10);doc.setFont('helvetica','bold');
+    doc.text(`${rack.name}  (${rack.code})`,22,curY+8);
+    doc.setFontSize(8);doc.setFont('helvetica','normal');
+    doc.setTextColor(allDone?61:255,allDone?255:100,allDone?160:109);
+    doc.text(`${rChecked}/${SECTIONS_PER_RACK} checked${allDone?' — COMPLETE':''}`,W-14,curY+8,{align:'right'});
+    curY+=16;
+    const colW=(W-28)/SECTIONS_PER_RACK;
+    secs.forEach((s,i)=>{
+      const x=14+i*colW,checked=s.info?.checked;
+      doc.setFillColor(checked?26:30,checked?92:34,checked?63:33);
+      doc.roundedRect(x+1,curY,colW-2,22,2,2,'F');
+      if(checked){doc.setFillColor(61,255,160);doc.roundedRect(x+1,curY,colW-2,3,1,1,'F');}
+      doc.setTextColor(checked?61:160,checked?255:165,checked?160:160);
+      doc.setFontSize(7);doc.setFont('helvetica','bold');
+      doc.text(s.code,x+colW/2,curY+8,{align:'center'});
+      doc.setFontSize(9);doc.text(checked?'✓':'✗',x+colW/2,curY+15,{align:'center'});
+      if(checked&&s.info.by){doc.setFontSize(5);doc.setFont('helvetica','normal');doc.setTextColor(100,140,120);doc.text(s.info.by.substring(0,10),x+colW/2,curY+20,{align:'center'});}
+    });
+    curY+=28;
+  });
+
+  const checkedItems=[];
+  RACKS.forEach(r=>{for(let i=0;i<SECTIONS_PER_RACK;i++){const code=sectionCode(r.id,i);if(state[code]?.checked)checkedItems.push({rack:r.name,code,by:state[code].by,time:state[code].time});}});
+  if(checkedItems.length>0){
+    if(curY>220){doc.addPage();doc.setFillColor(13,15,14);doc.rect(0,0,W,H,'F');curY=16;}
+    curY+=6;
+    doc.setFillColor(22,25,24);doc.rect(14,curY,W-28,8,'F');
+    doc.setTextColor(61,255,160);doc.setFontSize(9);doc.setFont('helvetica','bold');
+    doc.text('Checked Sections Detail',18,curY+5.5);curY+=10;
+    const cols=[28,52,70,50],headers=['Rack','Section','Checked By','Time'],startX=14;
+    doc.setFillColor(30,34,33);doc.rect(startX,curY,W-28,7,'F');
+    doc.setTextColor(180,190,185);doc.setFontSize(7);doc.setFont('helvetica','bold');
+    let cx=startX+3;headers.forEach((h,i)=>{doc.text(h,cx,curY+5);cx+=cols[i];});curY+=8;
+    checkedItems.forEach((item,idx)=>{
+      if(curY>270){doc.addPage();doc.setFillColor(13,15,14);doc.rect(0,0,W,H,'F');curY=16;}
+      if(idx%2===0){doc.setFillColor(20,23,22);doc.rect(startX,curY,W-28,6,'F');}
+      doc.setTextColor(232,237,233);doc.setFontSize(7);doc.setFont('helvetica','normal');
+      let dx=startX+3;[item.rack,item.code,item.by,item.time].forEach((v,i)=>{doc.text(String(v||'').substring(0,22),dx,curY+4.5);dx+=cols[i];});curY+=7;
+    });
+  }
+
+  doc.setFillColor(22,25,24);doc.rect(0,H-14,W,14,'F');
+  doc.setTextColor(107,117,112);doc.setFontSize(7);
+  doc.text('7 Eleven Rack Inspection System',14,H-5);
+  doc.text(`${checkedCount}/${total} sections complete`,W-14,H-5,{align:'right'});
+  doc.save(`7Eleven_Inspection_${now.toLocaleDateString('en-GB').replace(/\//g,'-')}.pdf`);
+  showToast('PDF exported successfully!');
+}
+</script>
+</body>
+</html>
